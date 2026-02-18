@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anonymous Idea Validation Platform</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            margin: auto;
+            margin-top: 40px;
+            background: rgba(0,0,0,0.35);
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        input, textarea, select, button {
+            width: 100%;
+            margin: 8px 0;
+            padding: 10px;
+            border-radius: 6px;
+            border: none;
+        }
+
+        button {
+            background: #00c6ff;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .hidden { display: none; }
+
+        .ideaCard {
+            background: rgba(255,255,255,0.1);
+            padding: 12px;
+            margin: 12px 0;
+            border-radius: 8px;
+        }
+
+        .comment {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+
+        .score {
+            font-weight: bold;
+            color: #00ffcc;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginPage" class="container">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Enter username">
+    <input type="password" id="password" placeholder="Enter password">
+    <select id="role">
+        <option value="">Select Role</option>
+        <option value="explorer">Idea Explorer</option>
+        <option value="investor">Investor</option>
+    </select>
+    <button onclick="login()">Enter</button>
+</div>
+
+<!-- EXPLORER -->
+<div id="explorerPage" class="container hidden">
+    <h2>Idea Explorer</h2>
+    <textarea id="ideaText" placeholder="Describe idea..."></textarea>
+    <button onclick="postIdea()">Post Idea</button>
+
+    <h3>Investor Feedback (Live)</h3>
+    <div id="feedbackArea"></div>
+</div>
+
+<!-- INVESTOR -->
+<div id="investorPage" class="container hidden">
+    <h2>Investor Dashboard</h2>
+    <div id="ideaList"></div>
+
+    <input type="text" id="chatMsg" placeholder="Comment">
+    <button onclick="sendFeedback()">Send</button>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+// 🔥 REPLACE WITH YOUR FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_DOMAIN",
+  databaseURL: "YOUR_DB_URL",
+  projectId: "YOUR_ID",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let currentRole = "";
+let currentUser = "";
+
+function login(){
+    const user = document.getElementById("username").value;
+    const pass = document.getElementById("password").value;
+    const role = document.getElementById("role").value;
+
+    if(!user || !pass || !role) return alert("Fill all fields");
+
+    currentUser = user;
+    currentRole = role;
+
+    document.getElementById("loginPage").classList.add("hidden");
+
+    if(role==="explorer"){
+        document.getElementById("explorerPage").classList.remove("hidden");
+    } else {
+        document.getElementById("investorPage").classList.remove("hidden");
+    }
+
+    startRealtime();
+}
+
+function postIdea(){
+    const text = document.getElementById("ideaText").value;
+    if(!text) return;
+
+    const newIdea = db.ref("ideas").push();
+
+    newIdea.set({
+        idea:text,
+        comments:[],
+        score:0
+    });
+
+    document.getElementById("ideaText").value="";
+}
+
+function sendFeedback(){
+    const msg = document.getElementById("chatMsg").value;
+    if(!msg) return;
+
+    db.ref("ideas").limitToLast(1).once("value",snap=>{
+        snap.forEach(child=>{
+            const data = child.val();
+            const comments = data.comments || [];
+            comments.push(msg);
+
+            const score = (data.score || 0) + 1;
+
+            child.ref.update({
+                comments:comments,
+                score:score
+            });
+        });
+    });
+
+    document.getElementById("chatMsg").value="";
+}
+
+function startRealtime(){
+    db.ref("ideas").on("value",snap=>{
+        const data = snap.val();
+        if(!data) return;
+
+        const ideas = Object.values(data);
+
+        if(currentRole==="investor"){
+            const list = document.getElementById("ideaList");
+            list.innerHTML="";
+
+            ideas.forEach(item=>{
+                list.innerHTML += `
+                <div class="ideaCard">
+                    <b>Idea:</b> ${item.idea}
+                    <div class="score">Startup Score: ${item.score}</div>
+                    <div class="comment">${(item.comments||[]).join("<br>")}</div>
+                </div>`;
+            });
+        }
+
+        if(currentRole==="explorer"){
+            const fb = document.getElementById("feedbackArea");
+            fb.innerHTML="";
+
+            ideas.forEach(item=>{
+                fb.innerHTML += `<div class="ideaCard">
+                    <b>${item.idea}</b>
+                    <div class="score">Score: ${item.score}</div>
+                    ${(item.comments||[]).join("<br>")}
+                </div>`;
+            });
+        }
+    });
+}
+</script>
+
+</body>
+</html>
+
